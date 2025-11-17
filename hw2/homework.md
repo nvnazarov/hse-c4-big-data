@@ -5,7 +5,7 @@ manage and a node manager.
 
     ![An image of Docker Desktop UI showing Docker Compose cluster](./images/docker_compose_cluster.png)
 
-2. Enter the name node container using `docker exec -it <data_node_container_id> /bin/bash`.
+2. Enter the name node container using `docker exec -it <name_node_container_id> /bin/bash`.
 3. Create a `hello_world.txt` file locally and copy it into Hadoop cluster:
     ```bash
     bash-4.2$ touch hello_world.txt
