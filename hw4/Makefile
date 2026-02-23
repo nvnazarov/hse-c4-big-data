@@ -13,3 +13,13 @@ down:
 	@echo "[stopping docker compose]"
 	@docker compose down
 	@echo "[stopped docker compose]"
+
+lint:
+	@echo "[running linter]"
+	@uv run ruff check dags/ --select AIR3
+	@echo "[linter finished]"
+
+format:
+	@echo "[running formatter]"
+	@uv run ruff format dags/ scripts/
+	@echo "[formatter finished]"
