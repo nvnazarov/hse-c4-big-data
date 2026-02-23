@@ -1,0 +1,6 @@
+.venv
+.env
+ssl
+logs
+plugins
+__pycache__
