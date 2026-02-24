@@ -21,5 +21,10 @@ lint:
 
 format:
 	@echo "[running formatter]"
-	@uv run ruff format dags/ scripts/
+	@uv run ruff format dags/ tests/
 	@echo "[formatter finished]"
+
+test:
+	@echo "[running tests]"
+	@uv run pytest
+	@echo "[all tests run]"
