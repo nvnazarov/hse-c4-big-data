@@ -314,10 +314,10 @@ def download_and_clean_products():
     t5 = clean_products
     t6 = clear_dirty_products
 
-    dirty_table = t4()
+    dirty_table = t4().as_setup()
     _ = t1 >> [t2, t3]
     _ = t2 >> dirty_table
-    _ = t3 >> t5(cast(str, dirty_table)) >> t6(cast(str, dirty_table))
+    _ = t3 >> t5(cast(str, dirty_table)) >> t6(cast(str, dirty_table)).as_teardown()
 
 
 download_and_clean_products()
