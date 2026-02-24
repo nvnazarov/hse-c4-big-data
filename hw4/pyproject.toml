@@ -3,11 +3,21 @@ name = "hw4"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["apache-airflow-task-sdk>=1.1.7"]
+dependencies = [
+    "apache-airflow-providers-postgres>=6.5.4",
+    "apache-airflow-task-sdk>=1.1.7",
+]
 
 [dependency-groups]
-dev = ["pytest>=9.0.2", "ruff>=0.15.2"]
+dev = [
+    "isort>=8.0.0",
+    "pytest>=9.0.2",
+    "ruff>=0.15.2",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["/tests"]
+
+[tool.isort]
+profile = "black"

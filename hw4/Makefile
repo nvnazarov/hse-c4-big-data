@@ -20,11 +20,20 @@ lint:
 	@echo "[linter finished]"
 
 format:
-	@echo "[running formatter]"
+	@echo "[running formatters]"
 	@uv run ruff format dags/ tests/
-	@echo "[formatter finished]"
+	@uv run isort dags/ tests/
+	@echo "[formatters finished]"
 
 test:
 	@echo "[running tests]"
 	@uv run pytest
 	@echo "[all tests run]"
+
+show-dirty-products:
+	@echo "[loading dirty products]"
+	@docker compose exec postgres psql -U airflow -d airflow -c "SELECT COUNT(*) FROM dirty_products"
+
+show-cleaned-products:
+	@echo "[loading dirty products]"
+	@docker compose exec postgres psql -U airflow -d airflow -c "SELECT COUNT(*) FROM products"
