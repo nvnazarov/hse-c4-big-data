@@ -1,0 +1,19 @@
+[project]
+name = "airflow-x"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "apache-airflow-providers-postgres>=6.6.0",
+    "apache-airflow-task-sdk>=1.1.7",
+    "apache-airflow[amazon]>=3.1.7",
+    "pydantic>=2.12.5",
+]
+
+[dependency-groups]
+dev = ["isort>=8.0.1", "ruff>=0.15.4"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.isort]
+profile = "black"
