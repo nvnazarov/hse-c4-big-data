@@ -46,6 +46,7 @@ def seed_minio_with_csv_tables():
     @task
     def clear_minio_bucket(conn_id: str, bucket: str):
         from typing import Any, cast
+
         from ha5.core.iterutil import batched
 
         from airflow.providers.amazon.aws.hooks.s3 import S3Hook  # type: ignore
@@ -84,10 +85,11 @@ def seed_minio_with_csv_tables():
     def put_csv_tables_into_minio_bucket(conn_id: str, bucket: str):
         from csv import DictWriter
         from io import StringIO
-        from typing import cast, Any
+        from typing import Any, cast
+
+        from ha5.core.seeder import Seeder
 
         from airflow.providers.amazon.aws.hooks.s3 import S3Hook  # type: ignore
-        from ha5.core.seeder import Seeder
 
         s3 = S3Hook(conn_id)
         seeder = Seeder()
@@ -120,12 +122,12 @@ def seed_minio_with_csv_tables():
                 }
             )
 
-    from ha5.config.minio import MINIO_CONNECTION_ID, MINIO_BUCKET
+    from ha5.config.minio import MINIO_CSV_BUCKET, MINIO_CONNECTION_ID
 
     t1 = verify_minio_is_accessible(MINIO_CONNECTION_ID)
-    t2 = ensure_minio_bucket_exists(MINIO_CONNECTION_ID, MINIO_BUCKET)
-    t3 = clear_minio_bucket(MINIO_CONNECTION_ID, MINIO_BUCKET)
-    t4 = put_csv_tables_into_minio_bucket(MINIO_CONNECTION_ID, MINIO_BUCKET)
+    t2 = ensure_minio_bucket_exists(MINIO_CONNECTION_ID, MINIO_CSV_BUCKET)
+    t3 = clear_minio_bucket(MINIO_CONNECTION_ID, MINIO_CSV_BUCKET)
+    t4 = put_csv_tables_into_minio_bucket(MINIO_CONNECTION_ID, MINIO_CSV_BUCKET)
     _ = t1 >> t2 >> t3 >> t4
 
 

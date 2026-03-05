@@ -136,3 +136,7 @@
 | dt                   | Дата выплаты                     |
 | amount               | Сумма выплаты                    |
 | is_successful        | Флаг успешности транзакции       |
+
+## Guides
+
+- <https://hungsblog.com/en/technology/data-engineering-and-tooling/how-to-configure-the-metastore-in-apache-spark/>

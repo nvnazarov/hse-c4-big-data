@@ -1,7 +1,8 @@
-SHELL := /bin/bash
-
 up:
-	@docker compose up --build
+	@docker compose up --build -d
+
+down:
+	@docker compose down
 
 show-config:
 	@docker compose config

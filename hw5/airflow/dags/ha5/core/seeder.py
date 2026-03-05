@@ -1,10 +1,10 @@
+from datetime import datetime
 from random import Random
 from typing import TypeVar
 from uuid import uuid4
 
-from ha5.core.models import ID, Money, Gender, Database, Client, ClientProfile
+from ha5.core.models import ID, Client, ClientProfile, Database, Gender, Money
 from pydantic import BaseModel
-from datetime import datetime
 
 T = TypeVar("T")
 U = BaseModel

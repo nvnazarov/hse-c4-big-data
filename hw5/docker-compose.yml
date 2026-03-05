@@ -1,6 +1,10 @@
 # Common attributes for Airflow services.
 x-airflow-common-service: &airflow-common-service
-  image: "apache/airflow:${HA5__AIRFLOW__IMAGE__TAG}"
+  build:
+    context: "./airflow"
+    dockerfile: "./Dockerfile"
+    args:
+      AIRFLOW__IMAGE__TAG: "${HA5__AIRFLOW__IMAGE__TAG}"
   environment: &airflow-common-environment
     AIRFLOW_CONFIG: "/opt/airflow/config/airflow.cfg"
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "${HA5__AIRFLOW__DATABASE__URI}"
@@ -13,13 +17,13 @@ x-airflow-common-service: &airflow-common-service
     - "./airflow/plugins:/opt/airflow/plugins"
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
-    postgres:
+    airflow-postgres:
       condition: "service_healthy"
   networks:
     - "private"
 
 services:
-  # ----------- SHARED ------------
+  # ------------ MINIO ------------
 
   # S3-compatible store designed for
   # storing synthetic data in CSV
@@ -36,28 +40,35 @@ services:
       - "127.0.0.1:${HA5__MINIO__LOCAL_PORT}:9001"
     networks:
       - "private"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:9000/minio/health/live >/dev/null",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ----------- AIRFLOW -----------
 
   # PostgreSQL database designed for
-  # storing results (i.e. results of
-  # executing the queries from the task)
-  # and Airflow configuration.
-  postgres:
-    image: "postgres:${HA5__POSTGRES__IMAGE__TAG}"
+  # storing Airflow data.
+  airflow-postgres:
+    image: "postgres:${HA5__AIRFLOW__POSTGRES__IMAGE__TAG}"
     environment:
-      - "POSTGRES_DB=${HA5__POSTGRES__DB}"
-      - "POSTGRES_USER=${HA5__POSTGRES__USER}"
-      - "POSTGRES_PASSWORD=${HA5__POSTGRES__PASSWORD}"
+      - "POSTGRES_DB=${HA5__AIRFLOW__POSTGRES__DB}"
+      - "POSTGRES_USER=${HA5__AIRFLOW__POSTGRES__USER}"
+      - "POSTGRES_PASSWORD=${HA5__AIRFLOW__POSTGRES__PASSWORD}"
     volumes:
-      - "postgres:/var/lib/postgresql/data"
+      - "airflow-postgres:/var/lib/postgresql/data"
     networks:
       - "private"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${HA5__POSTGRES__DB}"]
+      test: ["CMD", "pg_isready", "-U", "${HA5__AIRFLOW__POSTGRES__DB}"]
       interval: "10s"
       retries: 5
       start_period: "5s"
-
-  # ----------- AIRFLOW -----------
 
   # Initializes Airflow, e.g. changes
   # ownership of files in shared volumes,
@@ -224,7 +235,7 @@ services:
   # ------- HIVE METASTORE --------
 
   # PostgreSQL database designed for storing
-  # Hive Metastore data.
+  # Hive metastore data.
   hive-metastore-postgres:
     image: "postgres:${HA5__HIVE_METASTORE__POSTGRES__IMAGE__TAG}"
     environment:
@@ -241,56 +252,80 @@ services:
       retries: 5
       start_period: "5s"
 
-  # Hive Metastore stores information about
+  # Hive metastore stores information about
   # the tables, schemas, and other entities
   # that exist in the system. It is used by
-  # Spark to track the state of the cluster.
+  # Spark to store the tables metadata.
   hive-metastore:
-    image: "apache/hive:${HA5__HIVE_METASTORE__IMAGE__TAG}"
+    build:
+      context: "./hive-metastore"
+      dockerfile: "./Dockerfile"
+      args:
+        - "HIVE_METASTORE__IMAGE__TAG=${HA5__HIVE_METASTORE__IMAGE__TAG}"
     environment:
       - "SERVICE_NAME=metastore"
       - "DB_DRIVER=postgres"
-      - "METASTORE_DB_HOSTNAME=hive-metastore-postgres"
-      - "METASTORE_DB_PORT=5432"
-      - "METASTORE_DB_NAME=${HA5__HIVE_METASTORE__POSTGRES__DB}"
-      - "METASTORE_DB_USER=${HA5__HIVE_METASTORE__POSTGRES__USER}"
-      - "METASTORE_DB_PASSWORD=${HA5__HIVE_METASTORE__POSTGRES__PASSWORD}"
-    ports:
-      - "127.0.0.1:${HA5__HIVE_METASTORE__LOCAL_PORT}:9083"
-    volumes:
-      - "./hive-metastore:/opt/hive/conf"
+      - "SERVICE_OPTS=-Dhive.metastore.warehouse.dir=file:/opt/hive/data/warehouse"
     depends_on:
       hive-metastore-postgres:
         condition: "service_healthy"
     networks:
       - "private"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9083'"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
 
   # ------- SPARK CLUSTER ---------
 
   # Spark master node.
-  spark:
+  spark-master:
     image: "apache/spark:${HA5__SPARK__IMAGE__TAG}"
-    command: /opt/spark/sbin/start-master.sh && tail -f /dev/null
+    container_name: "spark-master"
+    hostname: "spark-master"
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master"
     environment:
       - "SPARK_MODE=master"
-      - "SPARK_MASTER_HOST=spark"
+      - "SPARK_MASTER_HOST=spark-master"
       - "SPARK_MASTER_PORT=7077"
       - "SPARK_MASTER_WEBUI_PORT=8080"
     ports:
       - "127.0.0.1:${HA5__SPARK__UI__LOCAL_PORT}:8080"
-      - "127.0.0.1:${HA5__SPARK__JOB_UI__LOCAL_PORT}:6066"
     volumes:
-      - "spark:/opt/spark/data"
       - "./spark/logs:/opt/spark/logs"
-      - "./spark/config:/opt/spark/conf"
+      - "./spark/config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro"
     networks:
       - "private"
-    user: ${HA5__SPARK__UID}:0
+    depends_on:
+      hive-metastore:
+        condition: "service_healthy"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
-      interval: 10s
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/spark-master/7077'"]
+      interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 15
+
+  # Spark worker node.
+  spark-worker:
+    image: "apache/spark:${HA5__SPARK__IMAGE__TAG}"
+    container_name: "spark-worker"
+    hostname: "spark-worker"
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+    environment:
+      - "SPARK_MODE=worker"
+      - "SPARK_WORKER_CORES=2"
+      - "SPARK_WORKER_MEMORY=2g"
+      - "SPARK_WORKER_WEBUI_PORT=8081"
+    ports:
+      - "127.0.0.1:${HA5__SPARK__WORKER__UI__LOCAL_PORT}:8081"
+    volumes:
+      - "./spark/config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro"
+    networks:
+      - "private"
+    depends_on:
+      spark-master:
+        condition: "service_healthy"
 
   # ------------ TRINO ------------
 
@@ -301,6 +336,5 @@ networks:
 
 volumes:
   minio: {}
-  postgres: {}
-  spark: {}
+  airflow-postgres: {}
   hive-metastore-postgres: {}

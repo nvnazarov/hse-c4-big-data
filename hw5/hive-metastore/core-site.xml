@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <configuration>
+    <!-- Use external PostgreSQL database instead of
+    the default local Derby database. -->
     <property>
         <name>javax.jdo.option.ConnectionURL</name>
         <value>jdbc:postgresql://hive-metastore-postgres:5432/postgres</value>
@@ -18,40 +20,7 @@
         <value>postgres</value>
     </property>
 
-
-    <property>
-        <name>hive.metastore.warehouse.dir</name>
-        <value>s3a://warehouse/</value>
-    </property>
-    <property>
-        <name>hive.metastore.schema.verification</name>
-        <value>false</value>
-    </property>
-    <property>
-        <name>hive.metastore.event.db.notification.api.auth</name>
-        <value>false</value>
-    </property>
-    <property>
-        <name>hive.metastore.uris</name>
-        <value>thrift://0.0.0.0:9083</value>
-    </property>
-    <property>
-        <name>hive.metastore.pre.event.listeners</name>
-        <value>org.apache.hadoop.hive.ql.security.authorization.AuthorizationPreEventListener</value>
-    </property>
-    <property>
-        <name>hive.security.metastore.authorization.manager</name>
-        <value>org.apache.hadoop.hive.ql.security.authorization.StorageBasedAuthorizationProvider</value>
-    </property>
-    <property>
-        <name>hive.metastore.sasl.enabled</name>
-        <value>false</value>
-    </property>
-    <property>
-        <name>hive.security.authorization.enabled</name>
-        <value>false</value>
-    </property>
-
+    <!-- Create the database schema automatically. -->
     <property>
         <name>datanucleus.schema.autoCreateAll</name>
         <value>true</value>
@@ -65,28 +34,33 @@
         <value>true</value>
     </property>
 
+    <!-- ... -->
+    <property>
+        <name>fs.s3a.impl</name>
+        <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+    </property>
     <property>
         <name>fs.s3a.endpoint</name>
         <value>http://minio:9000</value>
     </property>
     <property>
         <name>fs.s3a.access.key</name>
-        <value>minioadmin</value>
+        <value>minio-user</value>
     </property>
     <property>
         <name>fs.s3a.secret.key</name>
-        <value>minioadmin</value>
+        <value>minio-password</value>
     </property>
     <property>
         <name>fs.s3a.path.style.access</name>
         <value>true</value>
     </property>
     <property>
-        <name>fs.s3a.impl</name>
-        <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
-    </property>
-    <property>
         <name>fs.s3a.connection.ssl.enabled</name>
         <value>false</value>
+    </property>
+    <property>
+        <name>fs.s3a.aws.credentials.provider</name>
+        <value>org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider</value>
     </property>
 </configuration>

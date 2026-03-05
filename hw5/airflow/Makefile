@@ -6,3 +6,6 @@ qa:
 	@echo "[linters: start]"
 	@uv run ruff check
 	@echo "[linters: ok]"
+
+requirements:
+	@uv export --no-dev > requirements.txt
