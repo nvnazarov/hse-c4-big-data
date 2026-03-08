@@ -6,9 +6,8 @@ from pydantic import BaseModel
 ID = str
 Money = str
 Percent = str
-WorkArea = Literal["it", "logistics", "retail", "manufacture", "other"]
 Gender = Literal["male", "female"]
-BankAccountType = Literal[""]
+BankAccountType = Literal["kopilka", "nakopitelniy", "credit"]
 DepositType = Literal[""]
 CreditType = Literal["ipoteka", "auto", "potrebitelskaya"]
 
@@ -62,7 +61,7 @@ class ClientProfile(BaseModel):
     id: ID
     client_id: ID
     work_company: str
-    work_area: WorkArea
+    work_area: str
     salary: Money
     dt_loaded: datetime
 

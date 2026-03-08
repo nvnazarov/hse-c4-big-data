@@ -3,6 +3,3 @@ up:
 
 down:
 	@docker compose down
-
-show-config:
-	@docker compose config

@@ -1,21 +1,24 @@
 # Common attributes for Airflow services.
-x-airflow-common-service: &airflow-common-service
+x-airflow-common: &airflow-common
   build:
-    context: "./airflow"
-    dockerfile: "./Dockerfile"
+    context: "airflow"
+    dockerfile: "Dockerfile.${MOD?error}"
     args:
-      AIRFLOW__IMAGE__TAG: "${HA5__AIRFLOW__IMAGE__TAG}"
-  environment: &airflow-common-environment
-    AIRFLOW_CONFIG: "/opt/airflow/config/airflow.cfg"
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "${HA5__AIRFLOW__DATABASE__URI}"
-    AIRFLOW__API_AUTH__JWT_SECRET: "${HA5__AIRFLOW__API__JWT_SECRET}"
-    _PIP_ADDITIONAL_REQUIREMENTS: ""
+      X__AIRFLOW__IMAGE_TAG: "${HA5__AIRFLOW__IMAGE_TAG?error}"
   volumes:
     - "./airflow/dags:/opt/airflow/dags"
-    - "./airflow/logs:/opt/airflow/logs"
-    - "./airflow/config:/opt/airflow/config"
+    - "./logs/airflow:/opt/airflow/logs"
     - "./airflow/plugins:/opt/airflow/plugins"
-  user: "${AIRFLOW_UID:-50000}:0"
+  environment: &airflow-common-environment
+    HA5__AIRFLOW__PORT: "${HA5__AIRFLOW__PORT?error}"
+    HA5__AIRFLOW__HOST_NAME: "${HA5__AIRFLOW__HOST_NAME?error}"
+    HA5__AIRFLOW__POSTGRES__PORT: "${HA5__AIRFLOW__POSTGRES__PORT?error}"
+    HA5__AIRFLOW__POSTGRES__HOST_NAME: "${HA5__AIRFLOW__POSTGRES__HOST_NAME?error}"
+    HA5__AIRFLOW__POSTGRES__DB: "${HA5__AIRFLOW__POSTGRES__DB?error}"
+    HA5__AIRFLOW__POSTGRES__USER: "${HA5__AIRFLOW__POSTGRES__USER?error}"
+    HA5__AIRFLOW__POSTGRES__PASSWORD: "${HA5__AIRFLOW__POSTGRES__PASSWORD?error}"
+    HA5__AIRFLOW__USER: "${HA5__AIRFLOW__USER}"
+    HA5__AIRFLOW__PASSWORD: "${HA5__AIRFLOW__PASSWORD}"
   depends_on: &airflow-common-depends-on
     airflow-postgres:
       condition: "service_healthy"
@@ -25,26 +28,36 @@ x-airflow-common-service: &airflow-common-service
 services:
   # ------------ MINIO ------------
 
-  # S3-compatible store designed for
-  # storing synthetic data in CSV
-  # format for each table from the task.
+  # The S3-compatible storage designed to store
+  # CSVs and Iceberg tables.
   minio:
-    image: "quay.io/minio/minio:${HA5__MINIO__IMAGE__TAG}"
-    command: ["minio", "server", "/data", "--console-address", ":9001"]
+    image: "quay.io/minio/minio:${HA5__MINIO__IMAGE_TAG?error}"
+    command:
+      [
+        "minio",
+        "server",
+        "/data",
+        "--address",
+        ":${HA5__MINIO__API__PORT?error}",
+        "--console-address",
+        ":${HA5__MINIO__UI__PORT?error}",
+      ]
     environment:
-      - "MINIO_ROOT_USER=${HA5__MINIO__USER}"
-      - "MINIO_ROOT_PASSWORD=${HA5__MINIO__PASSWORD}"
+      - "MINIO_ROOT_USER=${HA5__MINIO__USER?error}"
+      - "MINIO_ROOT_PASSWORD=${HA5__MINIO__PASSWORD?error}"
     volumes:
-      - "minio:/data"
+      - "minio-data:/data"
     ports:
-      - "127.0.0.1:${HA5__MINIO__LOCAL_PORT}:9001"
+      - "127.0.0.1:${HA5__MINIO__API__LOCAL_PORT?error}:${HA5__MINIO__API__PORT?error}"
+      - "127.0.0.1:${HA5__MINIO__UI__LOCAL_PORT?error}:${HA5__MINIO__UI__PORT?error}"
+    hostname: "${HA5__MINIO__HOST_NAME?error}"
     networks:
       - "private"
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "curl -fsS http://localhost:9000/minio/health/live >/dev/null",
+          "curl -fsS http://localhost:${HA5__MINIO__API__PORT?error}/minio/health/live >/dev/null",
         ]
       interval: 10s
       timeout: 5s
@@ -55,41 +68,30 @@ services:
   # PostgreSQL database designed for
   # storing Airflow data.
   airflow-postgres:
-    image: "postgres:${HA5__AIRFLOW__POSTGRES__IMAGE__TAG}"
+    image: "postgres:${HA5__AIRFLOW__POSTGRES__IMAGE_TAG?error}"
     environment:
-      - "POSTGRES_DB=${HA5__AIRFLOW__POSTGRES__DB}"
-      - "POSTGRES_USER=${HA5__AIRFLOW__POSTGRES__USER}"
-      - "POSTGRES_PASSWORD=${HA5__AIRFLOW__POSTGRES__PASSWORD}"
+      - "POSTGRES_DB=${HA5__AIRFLOW__POSTGRES__DB?error}"
+      - "POSTGRES_USER=${HA5__AIRFLOW__POSTGRES__USER?error}"
+      - "POSTGRES_PASSWORD=${HA5__AIRFLOW__POSTGRES__PASSWORD?error}"
     volumes:
-      - "airflow-postgres:/var/lib/postgresql/data"
+      - "airflow-postgres-data:/var/lib/postgresql/data"
     networks:
       - "private"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${HA5__AIRFLOW__POSTGRES__DB}"]
+      test: ["CMD", "pg_isready", "-U", "${HA5__AIRFLOW__POSTGRES__DB?error}"]
       interval: "10s"
       retries: 5
       start_period: "5s"
 
-  # Initializes Airflow, e.g. changes
-  # ownership of files in shared volumes,
-  # downloads necessary Airflow plugins,
-  # creates necessary tables in the database.
+  # Checks Airflow setup, verify that the correct
+  # permissions are set on the files.
   airflow-init:
-    <<: *airflow-common-service
+    <<: *airflow-common
     entrypoint: "/bin/bash"
     command:
       - -c
       - |
-        if [[ -z "${AIRFLOW_UID}" ]]; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
-          echo "If you are on Linux, you SHOULD follow the instructions below to set "
-          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
-          echo "For other operating systems you can get rid of the warning with manually created .env file:"
-          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
-          echo
-          export AIRFLOW_UID=$$(id -u)
-        fi
+        envsubst < /opt/airflow/config/airflow.cfg.template > /opt/airflow/config/airflow.cfg
         one_meg=1048576
         mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
         cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
@@ -143,13 +145,13 @@ services:
         echo
         ls -la /opt/airflow/{logs,dags,plugins,config}
         echo
-        echo "Change ownership of files in /opt/airflow to ${AIRFLOW_UID}:0"
+        echo "Change ownership of files in /opt/airflow to ${HA5__AIRFLOW__USER_ID}:0"
         echo
-        chown -R "${AIRFLOW_UID}:0" /opt/airflow/
+        chown -R "${HA5__AIRFLOW__USER_ID}:0" /opt/airflow/
         echo
-        echo "Change ownership of files in shared volumes to ${AIRFLOW_UID}:0"
+        echo "Change ownership of files in shared volumes to ${HA5__AIRFLOW__USER_ID}:0"
         echo
-        chown -v -R "${AIRFLOW_UID}:0" /opt/airflow/{logs,dags,plugins,config}
+        chown -v -R "${HA5__AIRFLOW__USER_ID}:0" /opt/airflow/{logs,dags,plugins,config}
         echo
         echo "Files in shared volumes:"
         echo
@@ -158,25 +160,25 @@ services:
       <<: *airflow-common-environment
       _AIRFLOW_DB_MIGRATE: true
       _AIRFLOW_WWW_USER_CREATE: true
-      _AIRFLOW_WWW_USER_USERNAME: "${HA5__AIRFLOW__USER}"
-      _AIRFLOW_WWW_USER_PASSWORD: "${HA5__AIRFLOW__PASSWORD}"
+      _AIRFLOW_WWW_USER_USERNAME: "${HA5__AIRFLOW__USER?error}"
+      _AIRFLOW_WWW_USER_PASSWORD: "${HA5__AIRFLOW__PASSWORD?error}"
       _PIP_ADDITIONAL_REQUIREMENTS: ""
     user: "0:0"
 
   # Serves Airflow API (including web inteface) for
   # users, workers, and others who need it.
   airflow-api:
-    <<: *airflow-common-service
+    <<: *airflow-common
     command: "api-server"
     environment:
       <<: *airflow-common-environment
-      AIRFLOW__API_BASE_URL: "${HA5__AIRFLOW__LOCAL_BASE_URL}"
     ports:
-      - "127.0.0.1:${HA5__AIRFLOW__LOCAL_PORT}:8080"
+      - "127.0.0.1:${HA5__AIRFLOW__LOCAL_PORT}:${HA5__AIRFLOW__PORT}"
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: "service_completed_successfully"
+    user: "0:0"
     healthcheck:
       test:
         [
@@ -195,7 +197,7 @@ services:
   # the tasks that need to be run in the
   # configured sequence.
   airflow-scheduler:
-    <<: *airflow-common-service
+    <<: *airflow-common
     command: "scheduler"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
@@ -204,6 +206,7 @@ services:
       retries: 5
       start_period: "30s"
     restart: "always"
+    user: "0:0"
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -214,7 +217,7 @@ services:
   # syncronizes local DAGs version with the
   # one shown in the UI, i.e. server version.
   airflow-dag-processor:
-    <<: *airflow-common-service
+    <<: *airflow-common
     command: "dag-processor"
     healthcheck:
       test:
@@ -227,6 +230,7 @@ services:
       retries: 5
       start_period: "30s"
     restart: "always"
+    user: "0:0"
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -234,45 +238,74 @@ services:
 
   # ------- HIVE METASTORE --------
 
-  # PostgreSQL database designed for storing
-  # Hive metastore data.
+  # PostgreSQL database designed to store Hive Metastore
+  # meta information about schemas, tables, views, etc.
+  # that exist in the Minio.
   hive-metastore-postgres:
-    image: "postgres:${HA5__HIVE_METASTORE__POSTGRES__IMAGE__TAG}"
+    image: "postgres:${HA5__HIVE_METASTORE__POSTGRES__IMAGE_TAG?error}"
+    command: "postgres -p ${HA5__HIVE_METASTORE__POSTGRES__PORT?error}"
     environment:
-      - "POSTGRES_DB=${HA5__HIVE_METASTORE__POSTGRES__DB}"
-      - "POSTGRES_USER=${HA5__HIVE_METASTORE__POSTGRES__USER}"
-      - "POSTGRES_PASSWORD=${HA5__HIVE_METASTORE__POSTGRES__PASSWORD}"
+      - "POSTGRES_DB=${HA5__HIVE_METASTORE__POSTGRES__DB?error}"
+      - "POSTGRES_USER=${HA5__HIVE_METASTORE__POSTGRES__USER?error}"
+      - "POSTGRES_PASSWORD=${HA5__HIVE_METASTORE__POSTGRES__PASSWORD?error}"
     volumes:
-      - "hive-metastore-postgres:/var/lib/postgresql/data"
+      - "hive-metastore-postgres-data:/var/lib/postgresql/data"
+    hostname: "${HA5__HIVE_METASTORE__POSTGRES__HOST_NAME?error}"
     networks:
       - "private"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${HA5__HIVE_METASTORE__POSTGRES__DB}"]
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-p",
+          "${HA5__HIVE_METASTORE__POSTGRES__PORT?error}",
+          "-U",
+          "${HA5__HIVE_METASTORE__POSTGRES__USER?error}",
+          "-d",
+          "${HA5__HIVE_METASTORE__POSTGRES__DB?error}",
+        ]
       interval: "10s"
       retries: 5
       start_period: "5s"
 
-  # Hive metastore stores information about
-  # the tables, schemas, and other entities
-  # that exist in the system. It is used by
-  # Spark to store the tables metadata.
+  # Hive Metastore stores meta information about the schemas,
+  # tables, views, etc. that exist in the Minio. This service
+  # is used by Trino and Spark to correctly process incoming
+  # SQL-queries (e.g. substitute abstract data source paths
+  # with real paths).
   hive-metastore:
     build:
-      context: "./hive-metastore"
-      dockerfile: "./Dockerfile"
+      context: "metastore"
+      dockerfile: "Dockerfile.${MOD?error}"
       args:
-        - "HIVE_METASTORE__IMAGE__TAG=${HA5__HIVE_METASTORE__IMAGE__TAG}"
+        - "X__HIVE_METASTORE__IMAGE_TAG=${HA5__HIVE_METASTORE__IMAGE_TAG?error}"
     environment:
-      - "SERVICE_NAME=metastore"
-      - "DB_DRIVER=postgres"
-      - "SERVICE_OPTS=-Dhive.metastore.warehouse.dir=file:/opt/hive/data/warehouse"
+      - "METASTORE_PORT=${HA5__HIVE_METASTORE__PORT?error}"
+      - "HA5__HIVE_METASTORE__POSTGRES__HOST_NAME=${HA5__HIVE_METASTORE__POSTGRES__HOST_NAME?error}"
+      - "HA5__HIVE_METASTORE__POSTGRES__PORT=${HA5__HIVE_METASTORE__POSTGRES__PORT?error}"
+      - "HA5__HIVE_METASTORE__POSTGRES__DB=${HA5__HIVE_METASTORE__POSTGRES__DB?error}"
+      - "HA5__HIVE_METASTORE__POSTGRES__USER=${HA5__HIVE_METASTORE__POSTGRES__USER?error}"
+      - "HA5__HIVE_METASTORE__POSTGRES__PASSWORD=${HA5__HIVE_METASTORE__POSTGRES__PASSWORD?error}"
+      - "HA5__HIVE_METASTORE__DEFAULT_WAREHOUSE_DIR=${HA5__HIVE_METASTORE__DEFAULT_WAREHOUSE_DIR?error}"
+      - "HA5__MINIO__HOST_NAME=${HA5__MINIO__HOST_NAME?error}"
+      - "HA5__MINIO__API__PORT=${HA5__MINIO__API__PORT?error}"
+      - "HA5__MINIO__USER=${HA5__MINIO__USER?error}"
+      - "HA5__MINIO__PASSWORD=${HA5__MINIO__PASSWORD?error}"
+    volumes:
+      - "./logs/metastore/:/tmp/root/"
+    hostname: "${HA5__HIVE_METASTORE__HOST_NAME?error}"
+    networks:
+      - "private"
     depends_on:
       hive-metastore-postgres:
         condition: "service_healthy"
-    networks:
-      - "private"
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9083'"]
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/localhost/${HA5__HIVE_METASTORE__PORT?error}'",
+        ]
       interval: 15s
       timeout: 5s
       retries: 15
@@ -281,46 +314,52 @@ services:
 
   # Spark master node.
   spark-master:
-    image: "apache/spark:${HA5__SPARK__IMAGE__TAG}"
-    container_name: "spark-master"
-    hostname: "spark-master"
+    build:
+      context: "spark"
+      dockerfile: "Dockerfile.${MOD?error}"
+      args:
+        - "X__SPARK__IMAGE_TAG=${HA5__SPARK__IMAGE_TAG?error}"
+    hostname: "${HA5__SPARK__MASTER__HOST_NAME?error}"
     command: "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master"
     environment:
       - "SPARK_MODE=master"
       - "SPARK_MASTER_HOST=spark-master"
-      - "SPARK_MASTER_PORT=7077"
-      - "SPARK_MASTER_WEBUI_PORT=8080"
+      - "SPARK_MASTER_PORT=${HA5__SPARK__MASTER__API__PORT?error}"
+      - "SPARK_MASTER_WEBUI_PORT=${HA5__SPARK__MASTER__UI__PORT?error}"
     ports:
-      - "127.0.0.1:${HA5__SPARK__UI__LOCAL_PORT}:8080"
+      - "127.0.0.1:${HA5__SPARK__MASTER__UI__LOCAL_PORT}:${HA5__SPARK__MASTER__UI__PORT?error}"
     volumes:
-      - "./spark/logs:/opt/spark/logs"
-      - "./spark/config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro"
+      - "./logs/spark:/opt/spark/logs"
     networks:
       - "private"
     depends_on:
       hive-metastore:
         condition: "service_healthy"
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/spark-master/7077'"]
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/spark-master/${HA5__SPARK__MASTER__API__PORT?error}'",
+        ]
       interval: 15s
       timeout: 5s
       retries: 15
 
   # Spark worker node.
   spark-worker:
-    image: "apache/spark:${HA5__SPARK__IMAGE__TAG}"
-    container_name: "spark-worker"
-    hostname: "spark-worker"
-    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+    build:
+      context: "spark"
+      dockerfile: "Dockerfile.${MOD?error}"
+      args:
+        - "X__SPARK__IMAGE_TAG=${HA5__SPARK__IMAGE_TAG?error}"
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://${HA5__SPARK__MASTER__HOST_NAME?error}:${HA5__SPARK__MASTER__API__PORT?error}"
     environment:
       - "SPARK_MODE=worker"
       - "SPARK_WORKER_CORES=2"
       - "SPARK_WORKER_MEMORY=2g"
-      - "SPARK_WORKER_WEBUI_PORT=8081"
+      - "SPARK_WORKER_WEBUI_PORT=${HA5__SPARK__WORKER__UI__PORT}"
     ports:
-      - "127.0.0.1:${HA5__SPARK__WORKER__UI__LOCAL_PORT}:8081"
-    volumes:
-      - "./spark/config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro"
+      - "127.0.0.1:${HA5__SPARK__WORKER__UI__LOCAL_PORT}:${HA5__SPARK__WORKER__UI__PORT}"
     networks:
       - "private"
     depends_on:
@@ -329,12 +368,38 @@ services:
 
   # ------------ TRINO ------------
 
-  # TODO
+  # Trino coordinator and worker in one node. Configured
+  # to use Minio with Iceberg.
+  trino-coordinator-and-worker:
+    build:
+      context: "trino"
+      dockerfile: "Dockerfile.${MOD?error}"
+      args:
+        - "X__TRINO__IMAGE_TAG=${HA5__TRINO__IMAGE_TAG?error}"
+    environment:
+      - "HA5__TRINO__HOST_NAME=${HA5__TRINO__HOST_NAME?error}"
+      - "HA5__TRINO__PORT=${HA5__TRINO__PORT?error}"
+      - "HA5__MINIO__HOST_NAME=${HA5__MINIO__HOST_NAME?error}"
+      - "HA5__MINIO__API__PORT=${HA5__MINIO__API__PORT?error}"
+      - "HA5__MINIO__USER=${HA5__MINIO__USER?error}"
+      - "HA5__MINIO__PASSWORD=${HA5__MINIO__PASSWORD?error}"
+      - "HA5__HIVE_METASTORE__PORT=${HA5__HIVE_METASTORE__PORT?error}"
+      - "HA5__HIVE_METASTORE__HOST_NAME=${HA5__HIVE_METASTORE__HOST_NAME?error}"
+    ports:
+      - "127.0.0.1:${HA5__TRINO__LOCAL_PORT}:${HA5__TRINO__PORT?error}"
+    hostname: "${HA5__TRINO__HOST_NAME?error}"
+    networks:
+      - "private"
+    depends_on:
+      hive-metastore:
+        condition: "service_healthy"
+      minio:
+        condition: "service_healthy"
 
 networks:
   private: {}
 
 volumes:
-  minio: {}
-  airflow-postgres: {}
-  hive-metastore-postgres: {}
+  minio-data: {}
+  airflow-postgres-data: {}
+  hive-metastore-postgres-data: {}

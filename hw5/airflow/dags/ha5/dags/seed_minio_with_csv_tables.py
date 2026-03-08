@@ -97,7 +97,7 @@ def seed_minio_with_csv_tables():
         for table_name, entities in database.model_dump().items():
             entities = cast(list[dict[str, Any]], entities)
             if len(entities) == 0:
-                logger.info(
+                logger.warning(
                     {
                         "msg": "the table is empty and will not be written to the minio",
                         "table_name": table_name,

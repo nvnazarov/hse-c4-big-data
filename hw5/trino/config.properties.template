@@ -1,0 +1,4 @@
+coordinator=true
+node-scheduler.include-coordinator=true
+http-server.http.port=${HA5__TRINO__PORT}
+discovery.uri=http://${HA5__TRINO__HOST_NAME}:${HA5__TRINO__PORT}

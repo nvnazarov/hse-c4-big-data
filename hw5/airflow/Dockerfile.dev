@@ -1,0 +1,37 @@
+ARG X__AIRFLOW__IMAGE_TAG
+
+# This image is just for the envsubst utility. It is
+# downloaded in a separate stage because trinodb/trino
+# image does not provide any package manager.
+FROM debian:bullseye-slim as builder
+RUN apt-get update && apt-get install -y gettext-base
+
+# Builds Airflow with all necessary dependencies.
+FROM apache/airflow:${X__AIRFLOW__IMAGE_TAG}
+
+USER root
+
+# Java is required to run Spark operations.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-17-jdk-headless \
+    && apt-get clean
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+# Install all necessary Python dependencies (e.g. pyspark).
+USER airflow
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY --from=builder /usr/bin/envsubst /usr/local/bin/envsubst
+USER root
+RUN chmod +x /usr/local/bin/envsubst
+USER airflow
+
+ENV AIRFLOW_CONFIG /opt/airflow/config/airflow.cfg
+COPY config/airflow.cfg.template /opt/airflow/config/
+
+USER root
+COPY entrypoint.sh /entrypoint-wrapper.sh
+RUN chmod +x /entrypoint-wrapper.sh
+USER airflow
+ENTRYPOINT ["/entrypoint-wrapper.sh"]

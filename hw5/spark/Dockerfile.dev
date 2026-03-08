@@ -1,0 +1,3 @@
+ARG X__SPARK__IMAGE_TAG
+
+FROM apache/spark:${X__SPARK__IMAGE_TAG}
