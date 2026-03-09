@@ -3,11 +3,12 @@ import logging
 from airflow.sdk import dag, task  # type: ignore
 from typing import Any
 
+
 logger = logging.getLogger(__name__)
 
 
-@dag(dag_id="run_queries")
-def run_queries():
+@dag(dag_id="transform_csv_tables_into_iceberg_tables")
+def transform_csv_tables_into_iceberg_tables():
     @task
     def verify_minio_is_accessible(conn_id: str):
         from airflow.providers.amazon.aws.hooks.s3 import S3Hook  # type: ignore
@@ -45,14 +46,10 @@ def run_queries():
         )
 
     @task
-    def ensure_iceberg_namespace_exists():
-        pass
-
-    @task
     def verify_spark_is_accessible(
         conn_id: str,
         master: str,
-        conf: dict[str, Any] = dict(),
+        conf: dict[str, Any],
     ):
         from airflow.providers.apache.spark.hooks.spark_sql import SparkSqlHook  # type: ignore
 
@@ -60,7 +57,7 @@ def run_queries():
             "SELECT 1 as test;",
             conn_id=conn_id,
             master=master,
-            conf=conf,
+            conf=None,
             verbose=False,
         ).run_query()
 
@@ -68,37 +65,69 @@ def run_queries():
     def transform_csv_tables_into_iceberg_tables(
         conn_id: str,
         master: str,
-        conf: dict[str, Any] = dict(),
+        conf: dict[str, Any],
+        csv_bucket: str,
+        csv_prefix: str,
+        iceberg_schema: str,
     ):
-        from ha5.config.spark import SPARK_CONNECTION_ID, SPARK_CONF
-        from ha5.core.sql import compose_csv_to_iceberg_sql
+        from ha5.core.seeder import Database
         from airflow.providers.apache.spark.hooks.spark_sql import SparkSqlHook  # type: ignore
 
-        SparkSqlHook(
-            sql=("CREATE NAMESPACE IF NOT EXISTS bank.warehouse;"),
-            conn_id=SPARK_CONNECTION_ID,
-            master="spark://spark-master:7077",
-            conf=SPARK_CONF,
-            verbose=False,
-        ).run_query()
-        SparkSqlHook(
-            sql=compose_csv_to_iceberg_sql("clients"),
-            conn_id=SPARK_CONNECTION_ID,
-            master="spark://spark-master:7077",
-            conf=SPARK_CONF,
-            verbose=False,
-        ).run_query()
+        def compose_csv_to_iceberg_sql(table: str) -> str:
+            return (
+                f"CREATE OR REPLACE TEMPORARY VIEW {table}_view "
+                "USING csv "
+                "OPTIONS ("
+                f"    path 's3a://{csv_bucket}/{csv_prefix}/{table}.csv',"
+                "    header 'true',"
+                "    inferSchema 'true',"
+                "    delimiter ','"
+                ");"
+                f"CREATE OR REPLACE TABLE {iceberg_schema}.{table} "
+                "USING iceberg "
+                "AS "
+                f"SELECT * FROM {table}_view;"
+            )
 
-    from ha5.config.minio import MINIO_CONNECTION_ID, MINIO_ICEBERG_BUCKET
-    from ha5.config.spark import SPARK_CONNECTION_ID, SPARK_CONF, SPARK_MASTER
+        SparkSqlHook(
+            sql=(f"CREATE SCHEMA IF NOT EXISTS {iceberg_schema};"),
+            conn_id=conn_id,
+            master=master,
+            conf=conf,
+            verbose=False,
+        ).run_query()
+        for table in Database.model_fields.keys():
+            SparkSqlHook(
+                sql=compose_csv_to_iceberg_sql(table),
+                conn_id=conn_id,
+                master=master,
+                conf=conf,
+                verbose=False,
+            ).run_query()
+
+    from ha5.config import (
+        MINIO_CONNECTION_ID,
+        MINIO_CSV_BUCKET,
+        MINIO_CSV_KEY_PREFIX,
+        MINIO_ICEBERG_BUCKET,
+        ICEBERG_SCHEMA,
+        SPARK_CONNECTION_ID,
+        SPARK_MASTER,
+        SPARK_CONF,
+    )
 
     t1 = verify_minio_is_accessible(MINIO_CONNECTION_ID)
     t2 = ensure_iceberg_minio_bucket_exist(MINIO_CONNECTION_ID, MINIO_ICEBERG_BUCKET)
     t3 = verify_spark_is_accessible(SPARK_CONNECTION_ID, SPARK_MASTER, SPARK_CONF)
     t4 = transform_csv_tables_into_iceberg_tables(
-        SPARK_CONNECTION_ID, SPARK_MASTER, SPARK_CONF
+        SPARK_CONNECTION_ID,
+        SPARK_MASTER,
+        SPARK_CONF,
+        MINIO_CSV_BUCKET,
+        MINIO_CSV_KEY_PREFIX,
+        ICEBERG_SCHEMA,
     )
     _ = [t1 >> t2, t3] >> t4
 
 
-run_queries()
+transform_csv_tables_into_iceberg_tables()

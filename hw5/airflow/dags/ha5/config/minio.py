@@ -1,4 +1,0 @@
-MINIO_CONNECTION_ID = "minio_conn"
-MINIO_CSV_BUCKET = "bank-csv-files"
-MINIO_ICEBERG_BUCKET = "bank"
-MINIO_ICEBERG_NAMESPACE = "warehouse"

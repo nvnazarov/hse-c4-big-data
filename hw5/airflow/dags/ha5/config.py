@@ -1,18 +1,25 @@
-SPARK_CONNECTION_ID = "spark_conn"
-SPARK_MASTER="spark://spark-master:7077"
+MINIO_CONNECTION_ID = "minio"
+MINIO_CSV_BUCKET = "bank"
+MINIO_CSV_KEY_PREFIX = "csv"
+MINIO_ICEBERG_BUCKET = "bank"
+MINIO_ICEBERG_KEY_PREFIX = "iceberg"
+
+SPARK_CONNECTION_ID = "spark"
+SPARK_MASTER = "spark://spark-master:7070"
 SPARK_CONF = {
-    "spark.jars.packages": (
-        "org.apache.hadoop:hadoop-aws:3.3.4"
-        ",com.amazonaws:aws-java-sdk-bundle:1.12.262"
-        ",org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.4.3"
+    "spark.jars": (
+        "/opt/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.3.jar,"
+        "/opt/spark/jars/hadoop-aws-3.3.4.jar,"
+        "/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
     ),
     "spark.sql.csv.parser.columnPruning.enabled": "true",
     "spark.sql.legacy.timeParserPolicy": "LEGACY",
     "spark.sql.extensions": "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
     "spark.sql.catalog.bank": "org.apache.iceberg.spark.SparkCatalog",
     "spark.sql.catalog.bank.type": "hive",
-    "spark.sql.catalog.bank.uri": "thrift://hive-metastore:9083",
-    "spark.sql.catalog.bank.warehouse": "s3a://bank/warehouse",
+    "spark.sql.catalog.bank.uri": "thrift://metastore:9083",
+    "spark.sql.catalog.bank.warehouse": "s3a://bank/iceberg",
+    "spark.sql.catalog.bank.debug": "true",
     "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
     "spark.hadoop.fs.s3a.endpoint": "http://minio:9000",
     "spark.hadoop.fs.s3a.access.key": "minio-user",
@@ -22,5 +29,10 @@ SPARK_CONF = {
     "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
     "spark.hadoop.fs.s3a.endpoint.region": "us-east-1",
     "spark.hadoop.fs.s3a.signer.override.scheme": "http",
-    "spark.hadoop.fs.s3a.bucket.bank-csv-files.endpoint": "http://minio:9000",
+    # This settings were added due to some queries requiring
+    # so much memory that the worker is usually OOM-killed.
+    "spark.executor.memory": "2g",
+    "spark.executor.memoryOverhead": "1g",
+    "spark.driver.memory": "2g",
 }
+ICEBERG_SCHEMA = "bank.iceberg"

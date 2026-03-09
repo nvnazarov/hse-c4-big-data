@@ -14,7 +14,10 @@ from ha5.core.models import (
     Credit,
     Transaction,
     CreditPayment,
+    BankAccountType,
     Deposit,
+    DepositType,
+    CreditType,
     KeyRate,
     Gender,
     Money,
@@ -56,10 +59,19 @@ class Seeder:
         return self.r.choice(self._cities)
 
     def work_company(self) -> str:
-        return self.r.choice([""])
+        return self.r.choice(["yandex", "sber", "tinkoff", "1c", "5orochka", "avtovaz"])
 
     def work_area(self) -> str:
-        return self.r.choice([""])
+        return self.r.choice(["it"])
+
+    def bank_account_type(self) -> BankAccountType:
+        return self.r.choice(["kopilka", "nakopitelniy", "standard"])
+
+    def deposit_type(self) -> DepositType:
+        return self.r.choice(["short", "long"])
+
+    def credit_type(self) -> CreditType:
+        return self.r.choice(["ipoteka", "auto", "potrebitelskaya"])
 
     def dt(self) -> datetime:
         return datetime(
@@ -67,6 +79,10 @@ class Seeder:
             month=self.r.randint(1, 12),
             day=self.r.randint(1, 28),
         )
+
+    def sample(self, list_: list[T]) -> list[T]:
+        k = self.r.randint(0, len(list_))
+        return self.r.sample(list_, k=k)
 
     def generate_database(self) -> Database:
         clients = [
@@ -97,11 +113,13 @@ class Seeder:
         bank_accounts = [
             BankAccount(
                 id=self.id(),
-                client_id=self.id(),
-                type="kopilka",
+                client_id=client.id,
+                type=self.bank_account_type(),
                 dt_created=self.dt(),
                 dt_loaded=self.dt(),
             )
+            for _ in range(self.r.randint(1, 4))
+            for client in clients
         ]
         actives = [
             Active(
@@ -111,29 +129,32 @@ class Seeder:
                 count=self.r.randint(1, 5),
                 dt=self.dt(),
             )
-            for bank_account_id in map(lambda b: b.id, bank_accounts)
+            for bank_account_id in map(lambda b: b.id, self.sample(bank_accounts))
             for instrument_id in map(lambda i: i.id, instruments)
         ]
         credits = [
             Credit(
                 id=self.id(),
-                client_id=self.id(),
+                client_id=client.id,
                 dt_opened=self.dt(),
                 amount=self.money(),
                 percent="0.1",
-                type="ipoteka",
+                type=self.credit_type(),
             )
+            for client in self.sample(clients)
         ]
         deposits = [
             Deposit(
                 id=self.id(),
-                client_id=self.id(),
+                client_id=client.id,
                 dt_opened=self.dt(),
                 dt_closed=self.dt(),
                 amount=self.money(),
                 percent="0.5",
-                type="",
+                type=self.deposit_type(),
             )
+            for _ in range(self.r.randint(0, 10))
+            for client in clients
         ]
         transactions = [
             Transaction(
@@ -144,6 +165,7 @@ class Seeder:
                 dt=self.dt(),
                 is_successful=True,
             )
+            for _ in range(200)
         ]
         credit_payments = [
             CreditPayment(
@@ -154,8 +176,9 @@ class Seeder:
                 amount=self.money(),
                 is_successful=True,
             )
+            for _ in range(200)
         ]
-        key_rates = [KeyRate(dt_since=self.dt(), percent="")]
+        key_rates = [KeyRate(dt_since=self.dt(), percent="0.16")]
         return Database(
             clients=clients,
             profiles=profiles,

@@ -8,12 +8,13 @@ port = ${HA5__AIRFLOW__PORT}
 jwt_secret = 6y+Xnuft327xamQ34HROtx1LEaoUd3YAm2rrQ26g+5k=
 
 [core]
+auth_manager = airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
 dags_are_paused_at_creation = True
 default_timezone = Europe/Moscow
 execution_api_server_url = http://${HA5__AIRFLOW__HOST_NAME}:${HA5__AIRFLOW__PORT}/execution/
 fernet_key = 
 load_examples = False
-auth_manager = airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+max_active_runs_per_dag = 2
 
 [database]
 sql_alchemy_conn = postgresql+psycopg2://${HA5__AIRFLOW__POSTGRES__USER}:${HA5__AIRFLOW__POSTGRES__PASSWORD}@${HA5__AIRFLOW__POSTGRES__HOST_NAME}:${HA5__AIRFLOW__POSTGRES__PORT}/${HA5__AIRFLOW__POSTGRES__DB}

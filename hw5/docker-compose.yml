@@ -9,6 +9,7 @@ x-airflow-common: &airflow-common
     - "./airflow/dags:/opt/airflow/dags"
     - "./logs/airflow:/opt/airflow/logs"
     - "./airflow/plugins:/opt/airflow/plugins"
+    - "./jars/:/opt/spark/jars/"
   environment: &airflow-common-environment
     HA5__AIRFLOW__PORT: "${HA5__AIRFLOW__PORT?error}"
     HA5__AIRFLOW__HOST_NAME: "${HA5__AIRFLOW__HOST_NAME?error}"
@@ -17,8 +18,19 @@ x-airflow-common: &airflow-common
     HA5__AIRFLOW__POSTGRES__DB: "${HA5__AIRFLOW__POSTGRES__DB?error}"
     HA5__AIRFLOW__POSTGRES__USER: "${HA5__AIRFLOW__POSTGRES__USER?error}"
     HA5__AIRFLOW__POSTGRES__PASSWORD: "${HA5__AIRFLOW__POSTGRES__PASSWORD?error}"
-    HA5__AIRFLOW__USER: "${HA5__AIRFLOW__USER}"
-    HA5__AIRFLOW__PASSWORD: "${HA5__AIRFLOW__PASSWORD}"
+    HA5__AIRFLOW__USER: "${HA5__AIRFLOW__USER?error}"
+    HA5__AIRFLOW__PASSWORD: "${HA5__AIRFLOW__PASSWORD?error}"
+    AIRFLOW_CONN_MINIO: |
+      {
+        "conn_type": "aws",
+        "extra": {
+          "aws_access_key_id": "${HA5__MINIO__USER?error}",
+          "aws_secret_access_key": "${HA5__MINIO__PASSWORD?error}",
+          "endpoint_url": "http://${HA5__MINIO__HOST_NAME?error}:${HA5__MINIO__API__PORT?error}",
+          "region_name": "us-east-1"
+        }
+      }
+    AIRFLOW_CONN_SPARK: "spark://${HA5__SPARK__MASTER__HOST_NAME?error}:${HA5__SPARK__MASTER__API__PORT?error}"
   depends_on: &airflow-common-depends-on
     airflow-postgres:
       condition: "service_healthy"
@@ -186,7 +198,7 @@ services:
           "curl",
           "--fail",
           "--insecure",
-          "https://localhost:8080/api/v2/version",
+          "https://localhost:${HA5__AIRFLOW__PORT}/api/v2/version",
         ]
       interval: "30s"
       timeout: "10s"
@@ -207,6 +219,11 @@ services:
       start_period: "30s"
     restart: "always"
     user: "0:0"
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: "1GB"
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -323,7 +340,7 @@ services:
     command: "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master"
     environment:
       - "SPARK_MODE=master"
-      - "SPARK_MASTER_HOST=spark-master"
+      - "SPARK_MASTER_HOST=${HA5__SPARK__MASTER__HOST_NAME?error}"
       - "SPARK_MASTER_PORT=${HA5__SPARK__MASTER__API__PORT?error}"
       - "SPARK_MASTER_WEBUI_PORT=${HA5__SPARK__MASTER__UI__PORT?error}"
     ports:

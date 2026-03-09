@@ -7,8 +7,8 @@ ID = str
 Money = str
 Percent = str
 Gender = Literal["male", "female"]
-BankAccountType = Literal["kopilka", "nakopitelniy", "credit"]
-DepositType = Literal[""]
+BankAccountType = Literal["kopilka", "nakopitelniy", "standard"]
+DepositType = Literal["long", "short"]
 CreditType = Literal["ipoteka", "auto", "potrebitelskaya"]
 
 
