@@ -93,13 +93,14 @@ def run_queries_using_spark():
                 "   actives.id as active_id, "
                 "   clients.full_name as owner_full_name, "
                 "   actives.count, "
-                "   SUM(actives.count) OVER (PARTITION BY clients.id) AS total_actives "
+                "   SUM(actives.count) AS total_actives "
                 "FROM "
                 "   actives "
                 "JOIN "
                 "   bank_accounts ON bank_accounts.id = actives.bank_account_id "
                 "JOIN "
-                "   clients ON clients.id = bank_accounts.client_id;"
+                "   clients ON clients.id = bank_accounts.client_id "
+                "GROUP BY actives.id, clients.full_name, actives.count;"
             ),
             conn_id=SPARK_CONNECTION_ID,
             master=SPARK_MASTER,
@@ -160,6 +161,15 @@ def run_queries_using_spark():
                 f"USE {ICEBERG_SCHEMA};"
                 "INSERT OVERWRITE DIRECTORY 's3a://bank/results/q7' "
                 "USING csv "
+                "SELECT "
+                "   deposits.id AS deposit_id, "
+                "   clients.full_name, "
+                "   deposits.amount, "
+                "   (SELECT AVG(deposits.amount) FROM deposits) AS avg_amount "
+                "FROM "
+                "   deposits "
+                "JOIN "
+                "   clients ON clients.id = deposits.client_id;"
             ),
             conn_id=SPARK_CONNECTION_ID,
             master=SPARK_MASTER,
@@ -174,6 +184,19 @@ def run_queries_using_spark():
                 f"USE {ICEBERG_SCHEMA};"
                 "INSERT OVERWRITE DIRECTORY 's3a://bank/results/q8' "
                 "USING csv "
+                "SELECT "
+                "   transactions.id AS transaction_id, "
+                "   bank_accounts.type AS bank_account_type, "
+                "   transactions.amount, "
+                "   SUM(transactions.amount) as cum_amount "
+                "FROM "
+                "   transactions "
+                "JOIN "
+                "   bank_accounts ON bank_accounts.id = transactions.send_bank_account_id "
+                "GROUP BY "
+                "   transactions.id, "
+                "   bank_accounts.type, "
+                "   transactions.amount;"
             ),
             conn_id=SPARK_CONNECTION_ID,
             master=SPARK_MASTER,
@@ -188,6 +211,17 @@ def run_queries_using_spark():
                 f"USE {ICEBERG_SCHEMA};"
                 "INSERT OVERWRITE DIRECTORY 's3a://bank/results/q9' "
                 "USING csv "
+                "SELECT "
+                "   clients.id AS client_id, "
+                "   clients.full_name, "
+                "   credits.percent, "
+                "   MIN(CAST(credits.percent AS NUMERIC(3,2))) AS min_percent "
+                "FROM "
+                "   credits "
+                "JOIN "
+                "   clients ON clients.id = credits.client_id "
+                "GROUP BY "
+                "   clients.id, clients.full_name, credits.id, credits.percent;"
             ),
             conn_id=SPARK_CONNECTION_ID,
             master=SPARK_MASTER,
@@ -209,9 +243,7 @@ def run_queries_using_spark():
             verbose=False,
         ).run_query()
 
-    _ = [
-        # q1() >> q2() >> q3() >> 
-        q4() >> q5() >> q6() >> q7() >> q8() >> q9() >> q10()]
+    _ = [q1() >> q2() >> q3() >> q4() >> q5() >> q6() >> q7() >> q8() >> q9() >> q10()]
 
 
 run_queries_using_spark()

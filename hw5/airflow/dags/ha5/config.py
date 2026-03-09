@@ -29,10 +29,10 @@ SPARK_CONF = {
     "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
     "spark.hadoop.fs.s3a.endpoint.region": "us-east-1",
     "spark.hadoop.fs.s3a.signer.override.scheme": "http",
-    # This settings were added due to some queries requiring
-    # so much memory that the worker is usually OOM-killed.
-    "spark.executor.memory": "2g",
-    "spark.executor.memoryOverhead": "1g",
-    "spark.driver.memory": "2g",
+    # These configuration settings fix weird JVM bugs with Arrow.
+    "spark.sql.shuffle.partitions": "1",
+    "spark.sql.parquet.enableVectorizedReader": "false",
+    "spark.sql.inMemoryColumnarStorage.enableVectorizedReader": "false",
+    "spark.sql.iceberg.vectorization.enabled": "false",
 }
 ICEBERG_SCHEMA = "bank.iceberg"

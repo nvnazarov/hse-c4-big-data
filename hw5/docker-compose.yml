@@ -223,7 +223,7 @@ services:
       resources:
         limits:
           cpus: "4"
-          memory: "1GB"
+          memory: "2GB"
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
